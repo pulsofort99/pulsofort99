@@ -22,7 +22,7 @@
         
         .item-list { background: #262626; border-radius: 8px; padding: 10px; margin-bottom: 10px; border-left: 3px solid var(--gold); font-size: 12px; }
         .btn-group { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
-        .btn-sm { padding: 6px 8px; font-size: 10px; width: auto; flex: 1; margin: 0; min-width: 60px; }
+        .btn-sm { padding: 6px 8px; font-size: 10px; width: auto; flex: 1; margin: 0; min-width: 55px; }
         .tag-status { font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; float: right; text-transform: uppercase; }
         .status-win { background: var(--green); color: #fff; }
         .status-lose { background: #b71c1c; color: #fff; }
@@ -263,7 +263,7 @@
             titulo: titulo,
             detalles: detalles,
             estatus: "pendiente",
-            fecha: firebase.firestore.FieldValue.serverTimestamp()
+            fecha: new Date().toISOString() // Usar string estándar para evitar bloqueos de índice en Firestore
         }).then(() => {
             alert("🚀 Pronóstico publicado con éxito.");
             document.getElementById('postTitle').value = '';
@@ -273,7 +273,7 @@
         }).catch(err => alert("Error al publicar: " + err.message));
     }
 
-    // --- CONSULTAR PRONÓSTICOS ---
+    // --- CONSULTAR PRONÓSTICOS (SIN ORDENAMIENTO ESTRICTO PARA EVITAR BLOQUEO) ---
     db.collection("pronosticos").onSnapshot((snapshot) => {
         const list = document.getElementById('adminPostsList');
         if(!list) return;
@@ -340,7 +340,7 @@
                 const w = grupo.momios[mKey].wins;
                 const l = grupo.momios[mKey].loses;
                 const psh = grupo.momios[mKey].pushes || 0;
-                const total = w + l; // Los push no entran en el porcentaje de efectividad
+                const total = w + l;
                 const efec = total > 0 ? ((w / total) * 100).toFixed(0) : 0;
                 momiosHtml += `<div>• Cuota <b>${mKey}</b>: <span style="color:#4caf50;">${w}W</span> - <span style="color:#f44336;">${l}L</span> - <span style="color:#aaa;">${psh}P</span> (<b style="color:var(--gold);">${efec}%</b>)</div>`;
             });
@@ -443,7 +443,7 @@
         db.collection("claves").doc(clave).set({ 
             cliente: cliente, 
             activa: true, 
-            fechaRegistro: firebase.firestore.FieldValue.serverTimestamp() 
+            fechaRegistro: new Date().toISOString() 
         })
         .then(() => {
             alert(`✔ Clave ${clave} creada y activada.`);
@@ -499,4 +499,3 @@
 </script>
 </body>
 </html>
-
