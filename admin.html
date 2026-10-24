@@ -18,13 +18,15 @@
         button { background: var(--red); color: white; font-weight: bold; border: none; cursor: pointer; padding: 12px; }
         .btn-green { background: var(--green); }
         .btn-orange { background: #e65100; }
+        .btn-push { background: #616161; }
         
         .item-list { background: #262626; border-radius: 8px; padding: 10px; margin-bottom: 10px; border-left: 3px solid var(--gold); font-size: 12px; }
-        .btn-group { display: flex; gap: 5px; margin-top: 8px; }
-        .btn-sm { padding: 6px 10px; font-size: 10px; width: auto; flex: 1; margin: 0; }
+        .btn-group { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+        .btn-sm { padding: 6px 8px; font-size: 10px; width: auto; flex: 1; margin: 0; min-width: 60px; }
         .tag-status { font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; float: right; text-transform: uppercase; }
         .status-win { background: var(--green); color: #fff; }
         .status-lose { background: #b71c1c; color: #fff; }
+        .status-push { background: #757575; color: #fff; }
         .status-pending { background: #ff9800; color: #000; }
         .type-badge { background: var(--gold); color: #000; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px; }
         .cuota-badge { background: #1a237e; color: #90caf9; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px; }
@@ -181,7 +183,7 @@
 
     function calcularGananciaNeta(monto, cuotaStr, estatus) {
         monto = parseFloat(monto) || 0;
-        if(monto <= 0 || estatus === 'pendiente') return 0;
+        if(monto <= 0 || estatus === 'pendiente' || estatus === 'push') return 0;
 
         if(estatus === 'lose') {
             return -monto;
@@ -271,7 +273,7 @@
         }).catch(err => alert("Error al publicar: " + err.message));
     }
 
-    // --- CONSULTAR PRONÓSTICOS (SEGURA ANTE RECARGAS) ---
+    // --- CONSULTAR PRONÓSTICOS ---
     db.collection("pronosticos").onSnapshot((snapshot) => {
         const list = document.getElementById('adminPostsList');
         if(!list) return;
@@ -279,7 +281,7 @@
 
         if(snapshot.empty) {
             list.innerHTML = '<p style="font-size:11px; color:#777;">No hay pronósticos creados.</p>';
-            actualizarMetricasGlobales(0, 0, 0, 0, {});
+            actualizarMetricasGlobales(0, 0, 0, 0, 0, {});
             return;
         }
 
@@ -288,6 +290,7 @@
         let gananciaNetaGlobal = 0;
         let winsGlobal = 0;
         let losesGlobal = 0;
+        let pushGlobal = 0;
         let rangosCuotas = {};
 
         snapshot.forEach((doc) => {
@@ -311,6 +314,8 @@
                 if(estatus === 'win') rangosCuotas[rangoKey].wins++;
                 if(estatus === 'lose') rangosCuotas[rangoKey].loses++;
                 rangosCuotas[rangoKey].ganancia += gananciaNeta;
+            } else if(estatus === 'push') {
+                pushGlobal++;
             }
 
             if(!deportes[cat]) deportes[cat] = { items: [], momios: {} };
@@ -318,12 +323,13 @@
             deportes[cat].items.push({ id: id, gananciaNeta: gananciaNeta, ...p });
 
             const momio = cuota;
-            if(!deportes[cat].momios[momio]) deportes[cat].momios[momio] = { wins: 0, loses: 0 };
+            if(!deportes[cat].momios[momio]) deportes[cat].momios[momio] = { wins: 0, loses: 0, pushes: 0 };
             if(estatus === 'win') deportes[cat].momios[momio].wins++;
             if(estatus === 'lose') deportes[cat].momios[momio].loses++;
+            if(estatus === 'push') deportes[cat].momios[momio].pushes++;
         });
 
-        actualizarMetricasGlobales(inversionGlobal, gananciaNetaGlobal, winsGlobal, losesGlobal, rangosCuotas);
+        actualizarMetricasGlobales(inversionGlobal, gananciaNetaGlobal, winsGlobal, losesGlobal, pushGlobal, rangosCuotas);
 
         Object.keys(deportes).forEach((cat) => {
             const grupo = deportes[cat];
@@ -333,19 +339,22 @@
             Object.keys(grupo.momios).forEach((mKey) => {
                 const w = grupo.momios[mKey].wins;
                 const l = grupo.momios[mKey].loses;
-                const total = w + l;
+                const psh = grupo.momios[mKey].pushes || 0;
+                const total = w + l; // Los push no entran en el porcentaje de efectividad
                 const efec = total > 0 ? ((w / total) * 100).toFixed(0) : 0;
-                momiosHtml += `<div>• Cuota <b>${mKey}</b>: <span style="color:#4caf50;">${w}W</span> - <span style="color:#f44336;">${l}L</span> (<b style="color:var(--gold);">${efec}%</b>)</div>`;
+                momiosHtml += `<div>• Cuota <b>${mKey}</b>: <span style="color:#4caf50;">${w}W</span> - <span style="color:#f44336;">${l}L</span> - <span style="color:#aaa;">${psh}P</span> (<b style="color:var(--gold);">${efec}%</b>)</div>`;
             });
 
             grupo.items.forEach((p) => {
                 let badgeClass = 'status-pending';
                 if(p.estatus === 'win') badgeClass = 'status-win';
                 if(p.estatus === 'lose') badgeClass = 'status-lose';
+                if(p.estatus === 'push') badgeClass = 'status-push';
 
                 let txtGanancia = '';
                 if(p.estatus === 'win') txtGanancia = `<span style="color:#4caf50; font-weight:bold;"> (+$${p.gananciaNeta.toFixed(2)})</span>`;
                 if(p.estatus === 'lose') txtGanancia = `<span style="color:#f44336; font-weight:bold;"> (-$${(parseFloat(p.monto)||0).toFixed(2)})</span>`;
+                if(p.estatus === 'push') txtGanancia = `<span style="color:#aaa; font-weight:bold;"> (DEVUELTO / NULO)</span>`;
 
                 itemsHtml += `
                     <div class="item-list">
@@ -358,8 +367,9 @@
                         <div class="btn-group">
                             <button class="btn-sm btn-green" onclick="cambiarEstatus('${p.id}', 'win')">🟢 WIN</button>
                             <button class="btn-sm" style="background:#b71c1c;" onclick="cambiarEstatus('${p.id}', 'lose')">🔴 LOSE</button>
+                            <button class="btn-sm btn-push" onclick="cambiarEstatus('${p.id}', 'push')">⚪ PUSH</button>
                             <button class="btn-sm btn-orange" onclick="cambiarEstatus('${p.id}', 'pendiente')">⏳ PEND</button>
-                            <button class="btn-sm" style="background:#444;" onclick="eliminarPronostico('${p.id}')">🗑️ Borrar</button>
+                            <button class="btn-sm" style="background:#444;" onclick="eliminarPronostico('${p.id}')">🗑️</button>
                         </div>
                     </div>
                 `;
@@ -383,108 +393,11 @@
         document.getElementById('adminPostsList').innerHTML = `<p style="font-size:11px; color:red;">Error de conexión con Firebase: ${error.message}</p>`;
     });
 
-    function actualizarMetricasGlobales(inversion, ganancia, wins, loses, rangos) {
+    function actualizarMetricasGlobales(inversion, ganancia, wins, loses, push, rangos) {
         document.getElementById('balInversion').innerText = `$${inversion.toFixed(2)}`;
         
         const elGan = document.getElementById('balGanancia');
         elGan.innerText = `${ganancia >= 0 ? '+' : ''}$${ganancia.toFixed(2)}`;
         elGan.style.color = ganancia >= 0 ? 'var(--gold)' : '#f44336';
 
-        let roi = inversion > 0 ? ((ganancia / inversion) * 100).toFixed(1) : 0;
-        const elRoi = document.getElementById('balRoi');
-        elRoi.innerText = `${roi}%`;
-        elRoi.style.color = roi >= 0 ? '#90caf9' : '#f44336';
-
-        let totalResueltos = wins + loses;
-        let efect = totalResueltos > 0 ? ((wins / totalResueltos) * 100).toFixed(0) : 0;
-        document.getElementById('balEfectividad').innerText = `${efect}% (${wins}W-${loses}L)`;
-
-        const elRangos = document.getElementById('rangoCuotasStats');
-        let htmlRangos = '';
-        Object.keys(rangos).forEach((rKey) => {
-            let r = rangos[rKey];
-            let tot = r.wins + r.loses;
-            let ef = tot > 0 ? ((r.wins / tot) * 100).toFixed(0) : 0;
-            let colorGan = r.ganancia >= 0 ? '#4caf50' : '#f44336';
-            htmlRangos += `<div>• <b>${rKey}:</b> <span style="color:#4caf50;">${r.wins}W</span>-<span style="color:#f44336;">${r.loses}L</span> (${ef}%) | <span style="color:${colorGan};">${r.ganancia >= 0 ? '+' : ''}$${r.ganancia.toFixed(2)}</span></div>`;
-        });
-        elRangos.innerHTML = htmlRangos || '<div style="color:#777;">Sin pronósticos cerrados.</div>';
-    }
-
-    function cambiarEstatus(id, nuevoEstatus) {
-        db.collection("pronosticos").doc(id).update({ estatus: nuevoEstatus })
-        .catch(err => alert("Error al actualizar estatus: " + err.message));
-    }
-
-    function eliminarPronostico(id) {
-        if(confirm("¿Seguro de eliminar este pronóstico?")) {
-            db.collection("pronosticos").doc(id).delete()
-            .catch(err => alert("Error al eliminar: " + err.message));
-        }
-    }
-
-    // --- GESTIÓN DE CLAVES VIP / USUARIOS ---
-    function guardarClave() {
-        const cliente = document.getElementById('clientName').value.trim();
-        const clave = document.getElementById('clientKey').value.trim().toUpperCase();
-        if(!cliente || !clave) return alert("Ingresa el nombre y la clave.");
-
-        db.collection("claves").doc(clave).set({ 
-            cliente: cliente, 
-            activa: true, 
-            fechaRegistro: firebase.firestore.FieldValue.serverTimestamp() 
-        })
-        .then(() => {
-            alert(`✔ Clave ${clave} creada y activada.`);
-            document.getElementById('clientName').value = '';
-            document.getElementById('clientKey').value = '';
-        })
-        .catch(err => alert("Error al guardar clave: " + err.message));
-    }
-
-    db.collection("claves").onSnapshot((snapshot) => {
-        const userList = document.getElementById('adminUsersList');
-        if(!userList) return;
-        userList.innerHTML = '';
-
-        if(snapshot.empty) {
-            userList.innerHTML = '<p style="font-size:11px; color:#777;">No hay claves registradas.</p>';
-            return;
-        }
-
-        snapshot.forEach((doc) => {
-            const keyId = doc.id;
-            const u = doc.data();
-
-            userList.innerHTML += `
-                <div class="item-list">
-                    <b>Cliente:</b> ${u.cliente || 'Sin Nombre'} | <b>Clave:</b> <span style="color:var(--gold);">${keyId}</span><br>
-                    <b>Estado:</b> <span style="color:${u.activa ? '#4caf50' : '#f44336'};">${u.activa ? 'ACTIVO (VIP)' : 'INACTIVO'}</span>
-                    <div class="btn-group">
-                        <button class="btn-sm ${u.activa ? 'btn-orange' : 'btn-green'}" onclick="alternarAcceso('${keyId}', ${!u.activa})">
-                            ${u.activa ? '🚫 Quitar Acceso' : '✔ Dar Acceso'}
-                        </button>
-                        <button class="btn-sm" style="background:#444;" onclick="eliminarClave('${keyId}')">🗑️</button>
-                    </div>
-                </div>
-            `;
-        });
-    }, (error) => {
-        console.error("Error al cargar usuarios:", error);
-        document.getElementById('adminUsersList').innerHTML = `<p style="font-size:11px; color:red;">Error al cargar usuarios: ${error.message}</p>`;
-    });
-
-    function alternarAcceso(clave, nuevoEstado) {
-        db.collection("claves").doc(clave).update({ activa: nuevoEstado })
-        .catch(err => alert("Error al cambiar estado: " + err.message));
-    }
-
-    function eliminarClave(clave) {
-        if(confirm(`¿Seguro que deseas eliminar la clave ${clave}?`)) {
-            db.collection("claves").doc(clave).delete()
-            .catch(err => alert("Error al eliminar clave: " + err.message));
-        }
-    }
-</script>
-</body>
-</html>
+        let roi = inversion > 0 ? 
