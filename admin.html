@@ -37,7 +37,6 @@
         .accordion-content { padding: 10px; }
         .stats-box { background: #111; padding: 10px; border-radius: 6px; margin-bottom: 10px; border: 1px dashed var(--gold); font-size: 11px; }
 
-        /* Grid de Balance */
         .grid-balance { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
         .box-bal { background: #222; padding: 8px; border-radius: 6px; text-align: center; border: 1px solid #333; }
         .box-bal small { font-size: 9px; color: #aaa; display: block; }
@@ -160,41 +159,37 @@
 
 <script src="firebase-config.js"></script>
 <script>
-    // --- EXTRAE Y PARSEA LA CUOTA TANTO SI ES TEXTO COMO SI ES SOLO NÚMERO ---
     function obtenerMultiplicadorDecimal(cuotaStr) {
         if(!cuotaStr) return 1;
         let str = cuotaStr.toString().trim();
 
-        // Buscar primero cuota americana explícita (+150 o -110) en cualquier parte del texto
         let matchAmericana = str.match(/([+-]\d+)/);
         if(matchAmericana) {
             let val = parseFloat(matchAmericana[1]);
-            if(val > 0) return 1 + (val / 100);             // Positiva: +150 -> 2.50
-            if(val < 0) return 1 + (100 / Math.abs(val));   // Negativa: -120 -> 1.833
+            if(val > 0) return 1 + (val / 100);
+            if(val < 0) return 1 + (100 / Math.abs(val));
         }
 
-        // Si no hay el signo +, buscar un número decimal directo (ej: 1.85, 2.50)
         let matchDecimal = str.match(/(\d+[\.,]?\d*)/);
         if(matchDecimal) {
             let val = parseFloat(matchDecimal[1].replace(',', '.'));
             if(!isNaN(val) && val > 1) return val;
         }
 
-        return 1; // Retorno base de seguridad
+        return 1;
     }
 
-    // --- CÁLCULO DE GANANCIA NETA / PÉRDIDA ---
     function calcularGananciaNeta(monto, cuotaStr, estatus) {
         monto = parseFloat(monto) || 0;
         if(monto <= 0 || estatus === 'pendiente') return 0;
 
         if(estatus === 'lose') {
-            return -monto; // Resta la inversión completa
+            return -monto;
         }
         
         if(estatus === 'win') {
             let mult = obtenerMultiplicadorDecimal(cuotaStr);
-            return (monto * mult) - monto; // Ganancia limpia en USD
+            return (monto * mult) - monto;
         }
         return 0;
     }
@@ -216,13 +211,13 @@
         return "General";
     }
 
-    // --- CONFIGURACIÓN GENERAL Y PAGOS ---
+    // --- CARGAR CONFIGURACIÓN ---
     db.collection("configuracion").doc("general").get().then((doc) => {
         if(doc.exists) {
             document.getElementById('logoUrl').value = doc.data().logoUrl || '';
             document.getElementById('wsNum').value = doc.data().whatsapp || '';
         }
-    }).catch(err => console.error("Error al cargar config general:", err));
+    }).catch(err => console.error("Error config general:", err));
 
     db.collection("configuracion").doc("pagos").get().then((doc) => {
         if(doc.exists) {
@@ -230,7 +225,7 @@
             document.getElementById('binanceData').value = doc.data().binance || '';
             document.getElementById('otrosData').value = doc.data().otros || '';
         }
-    }).catch(err => console.error("Error al cargar config pagos:", err));
+    }).catch(err => console.error("Error config pagos:", err));
 
     function guardarConfigGeneral() {
         const logo = document.getElementById('logoUrl').value.trim();
@@ -247,7 +242,7 @@
         .then(() => alert("✔ Métodos de pago guardados."));
     }
 
-    // --- PUBLICAR PRONÓSTICO ---
+    // --- PUBLICAR ---
     function publicarPronostico() {
         const cat = document.getElementById('postCat').value;
         const tipo = document.getElementById('postType').value;
@@ -276,7 +271,7 @@
         }).catch(err => alert("Error al publicar: " + err.message));
     }
 
-    // --- RENDERIZADO Y CÁLCULOS DE PRONÓSTICOS ---
+    // --- CONSULTAR PRONÓSTICOS (SEGURA ANTE RECARGAS) ---
     db.collection("pronosticos").onSnapshot((snapshot) => {
         const list = document.getElementById('adminPostsList');
         if(!list) return;
@@ -371,7 +366,7 @@
             });
 
             list.innerHTML += `
-                <details>
+                <details open>
                     <summary>${cat} (${grupo.items.length})</summary>
                     <div class="accordion-content">
                         <div class="stats-box">
@@ -384,8 +379,8 @@
             `;
         });
     }, (error) => {
-        console.error("Error al cargar pronósticos:", error);
-        document.getElementById('adminPostsList').innerHTML = `<p style="font-size:11px; color:red;">Error al cargar pronósticos: ${error.message}</p>`;
+        console.error("Error al escuchar pronósticos:", error);
+        document.getElementById('adminPostsList').innerHTML = `<p style="font-size:11px; color:red;">Error de conexión con Firebase: ${error.message}</p>`;
     });
 
     function actualizarMetricasGlobales(inversion, ganancia, wins, loses, rangos) {
@@ -401,4 +396,95 @@
         elRoi.style.color = roi >= 0 ? '#90caf9' : '#f44336';
 
         let totalResueltos = wins + loses;
-        let efect = totalResueltos > 0 ? ((win
+        let efect = totalResueltos > 0 ? ((wins / totalResueltos) * 100).toFixed(0) : 0;
+        document.getElementById('balEfectividad').innerText = `${efect}% (${wins}W-${loses}L)`;
+
+        const elRangos = document.getElementById('rangoCuotasStats');
+        let htmlRangos = '';
+        Object.keys(rangos).forEach((rKey) => {
+            let r = rangos[rKey];
+            let tot = r.wins + r.loses;
+            let ef = tot > 0 ? ((r.wins / tot) * 100).toFixed(0) : 0;
+            let colorGan = r.ganancia >= 0 ? '#4caf50' : '#f44336';
+            htmlRangos += `<div>• <b>${rKey}:</b> <span style="color:#4caf50;">${r.wins}W</span>-<span style="color:#f44336;">${r.loses}L</span> (${ef}%) | <span style="color:${colorGan};">${r.ganancia >= 0 ? '+' : ''}$${r.ganancia.toFixed(2)}</span></div>`;
+        });
+        elRangos.innerHTML = htmlRangos || '<div style="color:#777;">Sin pronósticos cerrados.</div>';
+    }
+
+    function cambiarEstatus(id, nuevoEstatus) {
+        db.collection("pronosticos").doc(id).update({ estatus: nuevoEstatus })
+        .catch(err => alert("Error al actualizar estatus: " + err.message));
+    }
+
+    function eliminarPronostico(id) {
+        if(confirm("¿Seguro de eliminar este pronóstico?")) {
+            db.collection("pronosticos").doc(id).delete()
+            .catch(err => alert("Error al eliminar: " + err.message));
+        }
+    }
+
+    // --- GESTIÓN DE CLAVES VIP / USUARIOS ---
+    function guardarClave() {
+        const cliente = document.getElementById('clientName').value.trim();
+        const clave = document.getElementById('clientKey').value.trim().toUpperCase();
+        if(!cliente || !clave) return alert("Ingresa el nombre y la clave.");
+
+        db.collection("claves").doc(clave).set({ 
+            cliente: cliente, 
+            activa: true, 
+            fechaRegistro: firebase.firestore.FieldValue.serverTimestamp() 
+        })
+        .then(() => {
+            alert(`✔ Clave ${clave} creada y activada.`);
+            document.getElementById('clientName').value = '';
+            document.getElementById('clientKey').value = '';
+        })
+        .catch(err => alert("Error al guardar clave: " + err.message));
+    }
+
+    db.collection("claves").onSnapshot((snapshot) => {
+        const userList = document.getElementById('adminUsersList');
+        if(!userList) return;
+        userList.innerHTML = '';
+
+        if(snapshot.empty) {
+            userList.innerHTML = '<p style="font-size:11px; color:#777;">No hay claves registradas.</p>';
+            return;
+        }
+
+        snapshot.forEach((doc) => {
+            const keyId = doc.id;
+            const u = doc.data();
+
+            userList.innerHTML += `
+                <div class="item-list">
+                    <b>Cliente:</b> ${u.cliente || 'Sin Nombre'} | <b>Clave:</b> <span style="color:var(--gold);">${keyId}</span><br>
+                    <b>Estado:</b> <span style="color:${u.activa ? '#4caf50' : '#f44336'};">${u.activa ? 'ACTIVO (VIP)' : 'INACTIVO'}</span>
+                    <div class="btn-group">
+                        <button class="btn-sm ${u.activa ? 'btn-orange' : 'btn-green'}" onclick="alternarAcceso('${keyId}', ${!u.activa})">
+                            ${u.activa ? '🚫 Quitar Acceso' : '✔ Dar Acceso'}
+                        </button>
+                        <button class="btn-sm" style="background:#444;" onclick="eliminarClave('${keyId}')">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+    }, (error) => {
+        console.error("Error al cargar usuarios:", error);
+        document.getElementById('adminUsersList').innerHTML = `<p style="font-size:11px; color:red;">Error al cargar usuarios: ${error.message}</p>`;
+    });
+
+    function alternarAcceso(clave, nuevoEstado) {
+        db.collection("claves").doc(clave).update({ activa: nuevoEstado })
+        .catch(err => alert("Error al cambiar estado: " + err.message));
+    }
+
+    function eliminarClave(clave) {
+        if(confirm(`¿Seguro que deseas eliminar la clave ${clave}?`)) {
+            db.collection("claves").doc(clave).delete()
+            .catch(err => alert("Error al eliminar clave: " + err.message));
+        }
+    }
+</script>
+</body>
+</html>
